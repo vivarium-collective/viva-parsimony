@@ -1308,6 +1308,14 @@ async function buildScene(doc, fileName) {
 // primitive — a chain of spheres reads as a cylinder, eight corner
 // spheres read as a cube, etc. For mesh ingredients it's still a
 // single sphere; the LOD pipeline takes over once an OBJ loads.
+// Scale proxy-sphere tessellation with apparent size: the thousands of small
+// molecules (the bulk of the VR draw set) get cheap low-poly spheres, while the
+// few large landmark spheres stay smooth. At 24×12 every proxy was ~576 tris →
+// ~15k of them blew past 8M tris/eye and tanked the Quest frame rate.
+function sphereSegs(r) {
+  const w = Math.max(8, Math.min(24, Math.round(r / 14)));
+  return [w, Math.max(4, Math.round(w / 2))];
+}
 function buildFallbackGeometry(ing, enclosingRadius) {
   if (ing.shape.kind === "multi_sphere"
       && Array.isArray(ing.shape.spheres) && ing.shape.spheres.length > 0) {
@@ -1336,7 +1344,8 @@ function buildFallbackGeometry(ing, enclosingRadius) {
   const ell = ing.shape.kind === "mesh" ? ing.shape.ellipsoid : null;
   if (ell && Array.isArray(ell.semi_axes)) {
     const r = Array.isArray(ell.rotation) ? ell.rotation : [1, 0, 0, 0];
-    const g = new THREE.SphereGeometry(1, 20, 12);
+    const [sw, sh] = sphereSegs(enclosingRadius);
+    const g = new THREE.SphereGeometry(1, sw, sh);
     const m = new THREE.Matrix4().compose(
       new THREE.Vector3(),
       new THREE.Quaternion(r[1], r[2], r[3], r[0]), // pack stores [w, x, y, z]
@@ -1345,7 +1354,8 @@ function buildFallbackGeometry(ing, enclosingRadius) {
     g.applyMatrix4(m);
     return g;
   }
-  return new THREE.SphereGeometry(enclosingRadius, 24, 12);
+  const [sw, sh] = sphereSegs(enclosingRadius);
+  return new THREE.SphereGeometry(enclosingRadius, sw, sh);
 }
 
 function makeFallbackSphere(ing, color, enclosingRadius, placementCount) {
@@ -1577,8 +1587,33 @@ const VR_LOD_FLOOR = 0;
 // it first (see reassessLODs); the remainder render as cheap sphere proxies.
 const VR_TRIANGLE_BUDGET = 600000;
 // Adaptive controller: shrinks the triangle budget when fps dips (Quest GPU
-// pressure) and restores it when headroom returns. Seeded at VR_TRIANGLE_BUDGET.
-const vrBudget = makeAdaptiveBudget(VR_TRIANGLE_BUDGET);
+// pressure) and restores it when headroom returns. Seeded LOW and allowed to GROW
+// to VR_TRIANGLE_BUDGET — starting at the full budget slams the Quest GPU on the
+// first VR frames (the cause of the entry hitch / near-freeze); ramping up only
+// once fps headroom is confirmed avoids that initial overload.
+// fps thresholds tuned to real Quest-browser performance for THIS scene (~20-25
+// fps), NOT 72 — at the default 66/72 targets the budget read "too slow" every
+// frame and collapsed to its floor, starving the real meshes so everything stayed
+// an ellipsoid proxy ("eggs"). Here it holds a generous budget so molecules show
+// as real shapes, only easing back if fps craters below ~16.
+const vrBudget = makeAdaptiveBudget(450000, {
+  min: 250000, max: 1100000, shrinkAt: 16, growAt: 24, shrinkBy: 0.9, growBy: 1.06,
+});
+// VR frustum culling: only draw molecules inside the headset view so the triangle
+// budget is spent on what you're actually looking at (the ~half the cell behind
+// you is skipped). VR_CULL_MARGIN (Å) keeps a buffer around the view so moderate
+// head turns stay covered between reassess passes; vrFrameCount gates culling
+// until the XR camera pose is valid (culling on the first post-enter frames,
+// before the pose updates, would blank the scene — the old "black void").
+const VR_CULL_MARGIN = 4000;
+let vrFrameCount = 0;
+// Depth-reveal (Mol*-style): in VR, render only a shell of this depth (Å) ahead
+// of the nearest visible molecule. The occluded interior isn't drawn when you're
+// outside the cell, and deeper layers are revealed as you move in. revealMinDist
+// holds the nearest in-frustum molecule from the previous pass (cheap — the
+// camera is stable between debounced reassess passes).
+const REVEAL_BAND = 5000;
+let revealMinDist = null;
 // Rare types (few copies) are always drawn in full — the global subsample is for
 // the abundant species. Without this, a 30-copy complex like the flagellum would
 // be culled to ~6 at a 20% show fraction.
@@ -1715,6 +1750,8 @@ function reassessLODs() {
   const vh = renderer.domElement.clientHeight || 1;
   const fovHalfTan = Math.tan((camera.fov * Math.PI / 180) / 2);
   const camX = camPos.x, camY = camPos.y, camZ = camPos.z;
+  let minDistThisPass = Infinity;
+  const revealFar = (isPresentingNow && revealMinDist != null) ? revealMinDist + REVEAL_BAND : Infinity;
 
   meshLoadingTotal = 0;
   meshLoadingDone = 0;
@@ -1760,14 +1797,19 @@ function reassessLODs() {
       const p = entry.placements[pi];
       const px = p.position[0], py = p.position[1], pz = p.position[2];
       _tmpSphere.center.set(px, py, pz);
-      _tmpSphere.radius = sphereR;
-      // Skip frustum culling while presenting in VR: the XR culling frustum
-      // isn't reliably valid at reassess time, and culling everything leaves a
-      // black void. The VR draw budget already caps the instance count.
-      if (!isPresentingNow && !_tmpFrustum.intersectsSphere(_tmpSphere)) continue;
+      // Cull to the view frustum. In VR this uses the stereo XR frustum
+      // (refreshFrustum), but only once the headset pose is valid (vrFrameCount
+      // guard) and with a view-margin so head turns stay covered between passes.
+      const vrCull = isPresentingNow && vrFrameCount > 3;
+      _tmpSphere.radius = sphereR + (vrCull ? VR_CULL_MARGIN : 0);
+      if ((vrCull || !isPresentingNow) && !_tmpFrustum.intersectsSphere(_tmpSphere)) continue;
 
       const dx = px - camX, dy = py - camY, dz = pz - camZ;
       const dist = Math.sqrt(dx * dx + dy * dy + dz * dz);
+      if (isPresentingNow) {
+        if (dist < minDistThisPass) minDistThisPass = dist;  // track nearest for next pass
+        if (dist > revealFar) continue;                       // depth-reveal: skip occluded interior
+      }
       const r = p.rotation || [1, 0, 0, 0];
       _tmpQuat.set(r[1], r[2], r[3], r[0]); // pack v1 stores [w,x,y,z]
       _tmpPos.set(px, py, pz);
@@ -1924,6 +1966,9 @@ function reassessLODs() {
       lvl0.wantPriority = -1;
     }
   }
+
+  // Remember the nearest visible molecule for next pass's depth-reveal window.
+  revealMinDist = (isPresentingNow && minDistThisPass < Infinity) ? minDistThisPass : null;
 
   // Hand off to the priority drain. It scans all entries' wantLoad
   // levels and picks the one whose closest in-frustum placement is
@@ -3156,6 +3201,7 @@ function tick() {
     // we do NOT reassess every frame — that re-walked the whole drawn set each
     // frame and stuttered. reassess runs once on enter + as each mesh finishes
     // loading (loadLevel → scheduleReassess), which is enough.
+    vrFrameCount++;  // gates VR frustum culling until the XR camera pose is valid
     if (vrApi) {
       vrApi.updateVR(dt, now);
       // Detail upgrade: once VR navigation settles, re-run the LOD pass so
@@ -3213,6 +3259,7 @@ const vrApi = initVR({
   button: document.getElementById("vr-button"),
   onEnter: () => {
     controls.enabled = false; if (typeof autoSpin !== "undefined") autoSpin = false;
+    vrFrameCount = 0; // restart the cull-readiness guard each session
     // The membrane is a large always-drawn point cloud (not under the draw
     // budget) — in stereo on a Quest GPU it overwhelms the frame, so hide it in
     // VR; the molecules render under the VR budget.

@@ -56,8 +56,14 @@ export function initVR({ renderer, scene, camera, button, onEnter, onExit }) {
     // trigger = "grab") and handedness each frame.
     c.addEventListener("connected", (e) => { c.userData.inputSource = e.data; });
     c.addEventListener("disconnected", () => { c.userData.inputSource = null; });
-    c.addEventListener("selectstart", () => { c.userData.pinching = true; });
-    c.addEventListener("selectend", () => { c.userData.pinching = false; });
+    // WebXR action EVENTS (select = trigger/pinch, squeeze = grip) are delivered
+    // through a different path than gamepad button polling, and keep working on
+    // Quest browser builds where the gamepad buttons/axes are frozen. Drive grab
+    // from these so grab-to-drag works without any gamepad state.
+    c.addEventListener("selectstart", () => { c.userData.selecting = true; });
+    c.addEventListener("selectend", () => { c.userData.selecting = false; });
+    c.addEventListener("squeezestart", () => { c.userData.squeezing = true; });
+    c.addEventListener("squeezeend", () => { c.userData.squeezing = false; });
     dolly.add(c);
   }
 
@@ -115,6 +121,88 @@ export function initVR({ renderer, scene, camera, button, onEnter, onExit }) {
   hint.visible = false;
   let hintHideAt = 0;
 
+  // Shown when the session delivers HAND input instead of controllers: our
+  // grip/trigger/thumbstick controls cannot read hands, so say so explicitly
+  // rather than leaving every control silently dead.
+  const handWarnCanvas = document.createElement("canvas");
+  handWarnCanvas.width = 1024; handWarnCanvas.height = 256;
+  {
+    const x = handWarnCanvas.getContext("2d");
+    x.fillStyle = "rgba(45,12,12,0.92)";
+    roundRect(x, 0, 0, 1024, 256, 28); x.fill();
+    x.fillStyle = "#ffd9d9";
+    x.textAlign = "center"; x.textBaseline = "middle";
+    x.font = "600 44px system-ui, sans-serif";
+    x.fillText("Hand tracking detected", 512, 70);
+    x.font = "500 32px system-ui, sans-serif";
+    x.fillText("Pick up your Touch controllers for full controls", 512, 140);
+    x.fillText("(or pinch thumb + index to drag the cell)", 512, 190);
+  }
+  const handWarnMat = new THREE.MeshBasicMaterial({
+    map: new THREE.CanvasTexture(handWarnCanvas), transparent: true, depthTest: false, depthWrite: false });
+  const handWarn = new THREE.Mesh(new THREE.PlaneGeometry(0.85, 0.21), handWarnMat);
+  handWarn.position.set(0, 0.18, -1.0);
+  handWarn.renderOrder = 9998;
+  handWarn.frustumCulled = false;
+  handWarn.visible = false;
+
+  // ── TEMP input diagnostic HUD (gated behind ?vrdebug; remove after debugging) ─
+  // Live readout of WebXR input state, head-locked, so we can see ON-DEVICE
+  // whether controllers/gamepads are being delivered when controls don't respond.
+  const DEBUG_INPUT = new URLSearchParams(location.search).has("vrdebug");
+  const dbgCanvas = document.createElement("canvas");
+  dbgCanvas.width = 1024; dbgCanvas.height = 512;
+  const dbgCtx = dbgCanvas.getContext("2d");
+  const dbgTex = new THREE.CanvasTexture(dbgCanvas);
+  const dbgMesh = new THREE.Mesh(
+    new THREE.PlaneGeometry(0.9, 0.45),
+    new THREE.MeshBasicMaterial({ map: dbgTex, transparent: true, depthTest: false, depthWrite: false }));
+  dbgMesh.position.set(0, 0.0, -0.9);
+  dbgMesh.renderOrder = 10000;
+  dbgMesh.frustumCulled = false;
+  dbgMesh.visible = false;
+  let _dbgLast = 0;
+  let _dbgFrames = 0;
+  let _dbgFps = 0;
+  let _sessSel = 0, _sessSqz = 0;  // session-level select/squeeze event counts
+  function updateDebugHUD(now, dt) {
+    if (!DEBUG_INPUT) return;
+    _dbgFrames++;                         // counts EVERY frame updateVR runs
+    if (dt > 0) _dbgFps += (1 / dt - _dbgFps) * 0.1;  // smoothed fps
+    if (now - _dbgLast < 150) return;     // throttle redraw only
+    _dbgLast = now;
+    const lines = [];
+    const srcs = (session && session.inputSources) ? Array.from(session.inputSources) : [];
+    lines.push(`fps≈${_dbgFps.toFixed(0)} frames=${_dbgFrames} t=${(now / 1000).toFixed(1)}s inputSources=${srcs.length}`);
+    // Cross-check the standard Gamepad API (separate from XR input sources):
+    const ngp = (navigator.getGamepads && navigator.getGamepads()) || [];
+    const real = Array.from(ngp).filter(Boolean);
+    const navPressed = real.map(g => (g.buttons || []).map((b, j) => b.pressed ? j : null).filter(v => v !== null).join(",")).join(" | ");
+    lines.push(`navGamepads=${real.length} pressed=[${navPressed}]`);
+    srcs.forEach((s, i) => {
+      const gp = s.gamepad;
+      const pressed = gp && gp.buttons ? gp.buttons.map((b, j) => (b.pressed || b.value > 0.1) ? j : null).filter(v => v !== null).join(",") : "-";
+      const ax = gp && gp.axes ? Array.from(gp.axes).map(a => a.toFixed(2)).join(" ") : "-";
+      lines.push(`#${i} ${s.handedness || "?"} ray=${s.targetRayMode || "?"} gp=${gp ? ("btn" + (gp.buttons ? gp.buttons.length : 0)) : "NULL"} hand=${s.hand ? "Y" : "N"} prof=${(s.profiles && s.profiles[0]) || "?"}`);
+      lines.push(`   pressed=[${pressed}] axes=[${ax}]`);
+    });
+    lines.push(`ctrl0.src=${controllers[0].userData.inputSource ? "Y" : "N"} ctrl1.src=${controllers[1].userData.inputSource ? "Y" : "N"}`);
+    const ev = (c) => `${c.userData.selecting ? "S" : "-"}${c.userData.squeezing ? "Q" : "-"}`;
+    lines.push(`EVENTS  ctrl0=${ev(controllers[0])} ctrl1=${ev(controllers[1])}  (S=select/trigger Q=squeeze/grip)`);
+    lines.push(`vis=${session ? session.visibilityState : "-"} sessSel=${_sessSel} sessSqz=${_sessSqz} grab L=${_grab.left ? 1 : 0} R=${_grab.right ? 1 : 0}`);
+    const hh = (c) => (c.userData.inputSource && c.userData.inputSource.handedness) || "?";
+    const pp = (c) => `${c.position.x.toFixed(2)},${c.position.y.toFixed(2)},${c.position.z.toFixed(2)}`;
+    lines.push(`c0 ${hh(controllers[0])} pos=${pp(controllers[0])}`);
+    lines.push(`c1 ${hh(controllers[1])} pos=${pp(controllers[1])}`);
+    dbgCtx.fillStyle = "rgba(0,0,0,0.85)";
+    dbgCtx.fillRect(0, 0, dbgCanvas.width, dbgCanvas.height);
+    dbgCtx.fillStyle = "#3f6";
+    dbgCtx.font = "26px monospace";
+    dbgCtx.textBaseline = "top";
+    lines.forEach((ln, i) => dbgCtx.fillText(ln, 14, 12 + i * 32));
+    dbgTex.needsUpdate = true;
+  }
+
   // ── support detection → button state ──────────────────────────────────────
   function setButton(state, label, title) {
     if (!button) return;
@@ -165,6 +253,20 @@ export function initVR({ renderer, scene, camera, button, onEnter, onExit }) {
     await renderer.xr.setSession(session);
     try { renderer.xr.setFoveation?.(1.0); } catch (_) {}
 
+    // Session-level select/squeeze listeners: a second delivery path for the grab
+    // signal (counts for the debug HUD, and drives grab by matching the event's
+    // input source to a controller by handedness) — in case the per-controller
+    // events three.js forwards don't fire on this browser build.
+    const setGrabFromSession = (val, isSqueeze) => (e) => {
+      if (val) { if (isSqueeze) _sessSqz++; else _sessSel++; }
+      const h = e.inputSource && e.inputSource.handedness;
+      if (h === "left" || h === "right") _grab[h] = val;
+    };
+    session.addEventListener("selectstart", setGrabFromSession(true, false));
+    session.addEventListener("selectend", setGrabFromSession(false, false));
+    session.addEventListener("squeezestart", setGrabFromSession(true, true));
+    session.addEventListener("squeezeend", setGrabFromSession(false, true));
+
     // Frame the cell: drop the camera into the dolly, place the user back from
     // centre looking toward it, scaled so the cell is comfortably sized.
     camera.userData._parentBeforeVR = camera.parent;
@@ -174,7 +276,10 @@ export function initVR({ renderer, scene, camera, button, onEnter, onExit }) {
     // black. Use metre-scale near/far in VR; restore on exit.
     camera.userData._nearBeforeVR = camera.near;
     camera.userData._farBeforeVR = camera.far;
-    camera.near = 0.02;
+    // Near plane at 15 cm (not 2 cm): anything closer renders with extreme
+    // binocular disparity the eyes can't fuse → double vision. 15 cm keeps stereo
+    // comfortable while still letting you get close to look inside the cell.
+    camera.near = 0.15;
     camera.far = 2000;
     camera.updateProjectionMatrix();
     dolly.scale.setScalar(WORLD_SCALE);
@@ -187,6 +292,8 @@ export function initVR({ renderer, scene, camera, button, onEnter, onExit }) {
     camera.add(hint);
     hint.visible = true;
     hintHideAt = performance.now() + 6000;
+    camera.add(handWarn); // visibility toggled per-frame by hand-vs-controller detection
+    if (DEBUG_INPUT) { camera.add(dbgMesh); dbgMesh.visible = true; }
     scene.add(dolly);
 
     setButton("active", "Exit VR", "Leave VR");
@@ -201,6 +308,10 @@ export function initVR({ renderer, scene, camera, button, onEnter, onExit }) {
       vignette.visible = false;
       camera.remove(hint);
       hint.visible = false;
+      camera.remove(handWarn);
+      handWarn.visible = false;
+      camera.remove(dbgMesh);
+      dbgMesh.visible = false;
       scene.remove(dolly);
       if (camera.userData._nearBeforeVR != null) {
         camera.near = camera.userData._nearBeforeVR;
@@ -254,14 +365,21 @@ export function initVR({ renderer, scene, camera, button, onEnter, onExit }) {
   let _grabHand = null;                   // the controller doing a 1-hand drag
   let _gPrevDist = 0;                     // last inter-hand distance (2-hand)
 
+  // Grab state keyed by handedness, set from SESSION-level select/squeeze events
+  // (the delivery path that actually fires on this hardware). updateGrab maps each
+  // controller to its handedness to read it.
+  const _grab = { left: false, right: false };
+  const _haW = new THREE.Vector3();   // world-space hand positions (two-hand rotate)
+  const _hbW = new THREE.Vector3();
+  const _prevVec = new THREE.Vector3(); // previous inter-hand direction (two-hand rotate)
+  const _curVec = new THREE.Vector3();
+
   function isGrabbing(ctrl) {
     const src = ctrl.userData.inputSource;
-    const gp = src && src.gamepad;
-    // Hand-tracking pinch: WebXR exposes a `hand` map; treat a tracked hand with
-    // a near-zero thumb–index gap as a pinch. selectstart also fires for pinch,
-    // but reading it here keeps grab stateless per frame.
-    const hand = src && src.hand ? { pinching: !!ctrl.userData.pinching } : null;
-    return resolveGrab(gp, hand);
+    const h = src && src.handedness;
+    if (h && _grab[h]) return true;                       // session-event grab (primary)
+    if (ctrl.userData.selecting || ctrl.userData.squeezing) return true; // per-controller events
+    return resolveGrab(src && src.gamepad, null);          // gamepad fallback
   }
   function pulse(ctrl, intensity, ms) {
     const gp = ctrl.userData.inputSource && ctrl.userData.inputSource.gamepad;
@@ -290,6 +408,8 @@ export function initVR({ renderer, scene, camera, button, onEnter, onExit }) {
         _grabMode = 2;
         _gPrevMid.copy(_gMid);
         _gPrevDist = dist;
+        a.getWorldPosition(_haW); b.getWorldPosition(_hbW);
+        _prevVec.subVectors(_hbW, _haW).normalize();
         pulse(a, 0.4, 25); pulse(b, 0.4, 25);
       } else {
         // translate by midpoint movement…
@@ -305,6 +425,20 @@ export function initVR({ renderer, scene, camera, button, onEnter, onExit }) {
           dolly.position.add(_gShift);
           dolly.scale.setScalar(sNew);
         }
+        // …and yaw-rotate by the twist of the inter-hand vector, so two hands can
+        // turn the cell (thumbstick snap-turn is dead on some controllers).
+        // Pivot about the CELL CENTRE (world origin — the pack is centred there),
+        // NOT the hand midpoint: the hands are near the viewer while the cell is
+        // far, so a hand-midpoint pivot made the distant cell revolve around the
+        // user instead of spinning in place. World-space angle → no dolly feedback.
+        a.getWorldPosition(_haW); b.getWorldPosition(_hbW);
+        _curVec.subVectors(_hbW, _haW).normalize();
+        // Full-arc (any-axis) rotation from the previous to the current inter-hand
+        // direction — lets you tumble the cell in any direction, not just yaw.
+        _q.setFromUnitVectors(_prevVec, _curVec).invert(); // camera counter-rotates → cell follows hands
+        dolly.position.applyQuaternion(_q);   // pivot = world origin (cell centre)
+        dolly.quaternion.premultiply(_q);
+        _prevVec.copy(_curVec);
         _gPrevMid.copy(_gMid);
         _gPrevDist = dist;
       }
@@ -335,6 +469,16 @@ export function initVR({ renderer, scene, camera, button, onEnter, onExit }) {
     if (!renderer.xr.isPresenting || !session) return false;
 
     if (hint.visible && now >= hintHideAt) hint.visible = false;
+    updateDebugHUD(now, dt);
+
+    // Hand-vs-controller: if the session delivers only hand input (no controller
+    // gamepad), our grip/trigger/stick controls are inert — surface the warning.
+    let hasController = false, hasHandSrc = false;
+    for (const s of session.inputSources || []) {
+      if (s.hand) hasHandSrc = true;
+      if (!s.hand && s.gamepad) hasController = true;
+    }
+    handWarn.visible = hasHandSrc && !hasController;
 
     // In-headset exit: the desktop "Exit VR" button is unreachable while
     // immersed. Map ANY face button (A/B/X/Y) or thumbstick-click on either
