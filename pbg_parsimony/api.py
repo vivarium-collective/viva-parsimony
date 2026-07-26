@@ -122,6 +122,14 @@ def _public_structure(ref):
         return {"db": "rcsb", "id": ref.ref, "fmt": ref.kind}
     if ref.kind == "alphafold":
         return {"db": "alphafold", "id": ref.ref}
+    if ref.kind == "file":
+        try:
+            sc = Path(ref.ref).with_suffix(".provenance.json")
+            if sc.exists():
+                prov = json.loads(sc.read_text())
+                return {"db": "relaxed", "id": prov.get("id"), "provenance": prov}
+        except Exception:
+            pass
     return None
 
 

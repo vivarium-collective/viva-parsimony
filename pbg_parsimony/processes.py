@@ -5,10 +5,13 @@ model) and a structural *spec* as config (which structures/colors/categories,
 the cell geometry, the chromosome), and emits a packed 3D cell.
 """
 from __future__ import annotations
+import copy
+
 from process_bigraph import Step
 
 from pbg_parsimony.api import Ingredient, Capsule, Chromosome, build_pack
 from pbg_parsimony.structures import StructureRef
+from pbg_parsimony.relax_cache import get_or_relax
 
 
 def _ref(d) -> StructureRef:
@@ -80,7 +83,62 @@ class ParsimonyPackStep(Step):
         return {"pack": res}
 
 
+RELAX_PARAM_KEYS = ("forcefield", "water_model", "padding_nm", "ionic_strength_M",
+                    "temperature_K", "timestep_fs", "equil_ps", "seed")
+
+_RELAXABLE_KINDS = {"alphafold", "pdb", "cif"}
+
+
+def relax_spec(spec: dict, *, relax: bool, cache_dir, relax_cfg: dict) -> dict:
+    """Return a copy of ``spec`` with each ingredient's structure rewritten to
+    its cached RELAXED file (opt-in). ``relax=False`` returns the spec
+    unchanged (deep-copied; the original is never mutated). Only
+    alphafold/pdb/cif structures are relaxed; ``file`` refs pass through."""
+    out = copy.deepcopy(spec)
+    if not relax:
+        return out
+    for ing in out.get("ingredients", []):
+        structure = ing.get("structure")
+        if not structure or structure.get("kind") not in _RELAXABLE_KINDS:
+            continue
+        p = get_or_relax(structure, cache_dir, relax_cfg, obj_id=ing["id"])
+        ing["structure"] = {"kind": "file", "ref": str(p)}
+    return out
+
+
+class StructureRelaxStep(Step):
+    """Opt-in upstream Step: rewrite each ingredient's fetched structure to
+    its cached water-relaxed structure before packing."""
+
+    config_schema = {
+        "relax": {"_type": "boolean", "_default": False},
+        "cache_dir": {"_type": "string", "_default": "out/cache"},
+        "forcefield": {"_type": "list[string]",
+                       "_default": ["amber14-all.xml", "amber14/tip3pfb.xml"]},
+        "water_model": {"_type": "string", "_default": "tip3p"},
+        "padding_nm": {"_type": "float", "_default": 1.0},
+        "ionic_strength_M": {"_type": "float", "_default": 0.15},
+        "temperature_K": {"_type": "float", "_default": 300.0},
+        "timestep_fs": {"_type": "float", "_default": 2.0},
+        "equil_ps": {"_type": "float", "_default": 200.0},
+        "seed": {"_type": "integer", "_default": 0},
+    }
+
+    def inputs(self):
+        return {"spec": "any"}
+
+    def outputs(self):
+        return {"spec": "any"}
+
+    def update(self, state, interval=None):
+        relax_cfg = {k: self.config[k] for k in RELAX_PARAM_KEYS}
+        return {"spec": relax_spec(state["spec"], relax=self.config["relax"],
+                                    cache_dir=self.config["cache_dir"], relax_cfg=relax_cfg)}
+
+
 def register_parsimony(core):
-    """Register the Step so ``local:ParsimonyPackStep`` resolves in composites."""
+    """Register the Steps so ``local:ParsimonyPackStep``/``local:StructureRelaxStep``
+    resolve in composites."""
     core.register_link("ParsimonyPackStep", ParsimonyPackStep)
+    core.register_link("StructureRelaxStep", StructureRelaxStep)
     return core
