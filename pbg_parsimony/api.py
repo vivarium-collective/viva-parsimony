@@ -272,7 +272,14 @@ def build_pack(ingredients, capsule: Capsule, chromosome: Chromosome | None = No
         chrom_block = {
             "beads": chromosome.beads, "spacing": chromosome.spacing,
             "bead_radius": chromosome.bead_radius, "color": list(chromosome.color),
-            "compartment": "cell", "segment": chromosome.segment_id,
+            # The nucleoid lives inside the inner membrane. With a gram-negative
+            # envelope, "cell" is the OUTER compartment (surface = outer membrane,
+            # interior = periplasm) — confining the chromosome there squeezes it
+            # into the periplasm shell. Route it to the inner "cytoplasm"
+            # compartment so it fills + centres within the inner membrane. Without
+            # an envelope, "cell" is the whole single-capsule cell (unchanged).
+            "compartment": "cytoplasm" if envelope is not None else "cell",
+            "segment": chromosome.segment_id,
             "supercoil": chromosome.supercoil, "proteins": fiber,
             "n_chromosomes": chromosome.n_chromosomes,
             "fork_fraction": chromosome.fork_fraction,
