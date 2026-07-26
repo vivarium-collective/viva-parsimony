@@ -115,14 +115,49 @@ class Chromosome:
 
 def _public_structure(ref):
     """Map an ingredient's StructureRef to the viewer info-box structure record
-    ({db, id[, fmt]}), or None for file-based composites (no single public PDB)."""
+    ({db, id[, fmt]}). File-based composites (assembled complexes, the flagellum)
+    have no single public PDB → None. A relaxed ``file`` ref (one with a sidecar
+    ``<...>.provenance.json`` written by ``get_or_relax``) still yields a record,
+    ``{"db": "relaxed", "id": ..., "provenance": ...}``, tracing back to the
+    original fetched structure."""
     if ref is None:
         return None
     if ref.kind in ("pdb", "cif"):
         return {"db": "rcsb", "id": ref.ref, "fmt": ref.kind}
     if ref.kind == "alphafold":
         return {"db": "alphafold", "id": ref.ref}
+    if ref.kind == "file":
+        try:
+            sc = Path(ref.ref).with_suffix(".provenance.json")
+            if sc.exists():
+                prov = json.loads(sc.read_text())
+                return {"db": "relaxed", "id": prov.get("id"), "provenance": prov}
+        except Exception:
+            pass
     return None
+
+
+def _publish_relaxed_pdb(ing, st: dict, struct_cache: Path) -> None:
+    """Copy a relaxed ``file`` ingredient's PDB into ``struct_cache`` and point
+    ``st["url"]`` at it (pack-relative), so the viewer can fetch the all-atom
+    relaxed structure locally instead of hitting a public database. ``st`` is
+    the record from ``_public_structure`` (mutated in place). Best-effort: any
+    failure just leaves ``st`` without a ``url`` — the pack still builds."""
+    if not st or st.get("db") != "relaxed":
+        return
+    ref = ing.structure
+    if ref is None or ref.kind != "file":
+        return
+    try:
+        src = Path(ref.ref)
+        if not src.exists():
+            return
+        struct_cache.mkdir(parents=True, exist_ok=True)
+        dest = struct_cache / f"{ing.id}.pdb"
+        shutil.copy(src, dest)
+        st["url"] = f"structures/{ing.id}.pdb"
+    except Exception:
+        pass
 
 
 def build_pack(ingredients, capsule: Capsule, chromosome: Chromosome | None = None, *,
@@ -197,9 +232,12 @@ def build_pack(ingredients, capsule: Capsule, chromosome: Chromosome | None = No
         # Record the public structure source so the viewer's info box can show the
         # real all-atom structure (RCSB id / AlphaFold accession). File-based
         # composites (assembled complexes, the flagellum) have no single public
-        # structure → omitted (the box shows "no public structure").
+        # structure → omitted (the box shows "no public structure"). A relaxed
+        # `file` ref is the exception: it carries a provenance sidecar back to
+        # the original public structure, so it still yields a record (db:"relaxed").
         st = _public_structure(ing.structure)
         if st:
+            _publish_relaxed_pdb(ing, st, struct_cache)
             sidecar[ing.id]["structure"] = st
         if cnt <= 0:
             # Marker-only object (e.g. the fork replisome): registered so the
@@ -234,7 +272,14 @@ def build_pack(ingredients, capsule: Capsule, chromosome: Chromosome | None = No
         chrom_block = {
             "beads": chromosome.beads, "spacing": chromosome.spacing,
             "bead_radius": chromosome.bead_radius, "color": list(chromosome.color),
-            "compartment": "cell", "segment": chromosome.segment_id,
+            # The nucleoid lives inside the inner membrane. With a gram-negative
+            # envelope, "cell" is the OUTER compartment (surface = outer membrane,
+            # interior = periplasm) — confining the chromosome there squeezes it
+            # into the periplasm shell. Route it to the inner "cytoplasm"
+            # compartment so it fills + centres within the inner membrane. Without
+            # an envelope, "cell" is the whole single-capsule cell (unchanged).
+            "compartment": "cytoplasm" if envelope is not None else "cell",
+            "segment": chromosome.segment_id,
             "supercoil": chromosome.supercoil, "proteins": fiber,
             "n_chromosomes": chromosome.n_chromosomes,
             "fork_fraction": chromosome.fork_fraction,

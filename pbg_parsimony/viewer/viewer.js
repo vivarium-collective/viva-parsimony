@@ -2250,6 +2250,8 @@ async function _fetchStructure(src) {
   } else if (src.db === "alphafold") {
     const a = await fetch(`https://alphafold.ebi.ac.uk/api/prediction/${src.id}`);
     const j = await a.json(); url = (Array.isArray(j) ? j[0] : j).pdbUrl; fmt = "pdb";
+  } else if (src.db === "relaxed" && src.url) {
+    fmt = src.fmt || "pdb"; url = src.url;   // locally-published relaxed structure
   } else { return null; }
   const resp = await fetch(url);
   if (!resp.ok) throw new Error(`fetch ${url} → ${resp.status}`);

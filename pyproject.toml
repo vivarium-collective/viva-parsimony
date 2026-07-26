@@ -31,3 +31,6 @@ bigraph-schema = { git = "https://github.com/vivarium-collective/bigraph-schema.
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+markers = [
+    "slow: slow end-to-end integration tests (network + OpenMM + parsimony CLI); excluded by default via -m 'not slow'",
+]
