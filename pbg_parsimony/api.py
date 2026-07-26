@@ -115,7 +115,11 @@ class Chromosome:
 
 def _public_structure(ref):
     """Map an ingredient's StructureRef to the viewer info-box structure record
-    ({db, id[, fmt]}), or None for file-based composites (no single public PDB)."""
+    ({db, id[, fmt]}). File-based composites (assembled complexes, the flagellum)
+    have no single public PDB → None. A relaxed ``file`` ref (one with a sidecar
+    ``<...>.provenance.json`` written by ``get_or_relax``) still yields a record,
+    ``{"db": "relaxed", "id": ..., "provenance": ...}``, tracing back to the
+    original fetched structure."""
     if ref is None:
         return None
     if ref.kind in ("pdb", "cif"):
@@ -205,7 +209,9 @@ def build_pack(ingredients, capsule: Capsule, chromosome: Chromosome | None = No
         # Record the public structure source so the viewer's info box can show the
         # real all-atom structure (RCSB id / AlphaFold accession). File-based
         # composites (assembled complexes, the flagellum) have no single public
-        # structure → omitted (the box shows "no public structure").
+        # structure → omitted (the box shows "no public structure"). A relaxed
+        # `file` ref is the exception: it carries a provenance sidecar back to
+        # the original public structure, so it still yields a record (db:"relaxed").
         st = _public_structure(ing.structure)
         if st:
             sidecar[ing.id]["structure"] = st
