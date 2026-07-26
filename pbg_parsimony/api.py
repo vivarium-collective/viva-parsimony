@@ -137,6 +137,29 @@ def _public_structure(ref):
     return None
 
 
+def _publish_relaxed_pdb(ing, st: dict, struct_cache: Path) -> None:
+    """Copy a relaxed ``file`` ingredient's PDB into ``struct_cache`` and point
+    ``st["url"]`` at it (pack-relative), so the viewer can fetch the all-atom
+    relaxed structure locally instead of hitting a public database. ``st`` is
+    the record from ``_public_structure`` (mutated in place). Best-effort: any
+    failure just leaves ``st`` without a ``url`` — the pack still builds."""
+    if not st or st.get("db") != "relaxed":
+        return
+    ref = ing.structure
+    if ref is None or ref.kind != "file":
+        return
+    try:
+        src = Path(ref.ref)
+        if not src.exists():
+            return
+        struct_cache.mkdir(parents=True, exist_ok=True)
+        dest = struct_cache / f"{ing.id}.pdb"
+        shutil.copy(src, dest)
+        st["url"] = f"structures/{ing.id}.pdb"
+    except Exception:
+        pass
+
+
 def build_pack(ingredients, capsule: Capsule, chromosome: Chromosome | None = None, *,
                out_dir, name: str = "model", scale: float = 1.0, proxy_lod: int = 2,
                cell_mesh=None, envelope: dict | None = None) -> dict:
@@ -214,6 +237,7 @@ def build_pack(ingredients, capsule: Capsule, chromosome: Chromosome | None = No
         # the original public structure, so it still yields a record (db:"relaxed").
         st = _public_structure(ing.structure)
         if st:
+            _publish_relaxed_pdb(ing, st, struct_cache)
             sidecar[ing.id]["structure"] = st
         if cnt <= 0:
             # Marker-only object (e.g. the fork replisome): registered so the
