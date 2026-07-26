@@ -65,6 +65,25 @@ def relaxed_path(cache_dir: str | Path, obj_id: str, phash: str) -> Path:
     return Path(cache_dir) / "relaxed" / f"{obj_id}__{phash}.pdb"
 
 
+def _cached_model_version(cache_dir: str | Path, obj_id: str, ref: Dict[str, Any],
+                           relax_cfg: Dict[str, Any]) -> Optional[str]:
+    """Reuse the ``model_version`` of an existing relaxed entry for this
+    ``obj_id`` whose source/id and relax params match, so a warm cache is
+    reproducible even when the live AlphaFold API call is unavailable
+    (offline / network down) — avoids a spurious cache MISS on a structure
+    that's already been relaxed under a fixed model version."""
+    import glob
+    for sc in glob.glob(str(Path(cache_dir) / "relaxed" / f"{obj_id}__*.provenance.json")):
+        try:
+            prov = json.loads(Path(sc).read_text())
+        except Exception:
+            continue
+        if prov.get("source") == ref["kind"] and prov.get("id") == ref["ref"] \
+                and all(prov.get(k) == v for k, v in relax_cfg.items()):
+            return prov.get("model_version")
+    return None
+
+
 def get_or_relax(ref: Dict[str, Any], cache_dir: str | Path, relax_cfg: Dict[str, Any],
                   *, obj_id: str) -> Path:
     """Return a relaxed structure for ``ref``, relaxing (and caching) on miss.
@@ -78,19 +97,21 @@ def get_or_relax(ref: Dict[str, Any], cache_dir: str | Path, relax_cfg: Dict[str
     """
     model_version = None
     if ref["kind"] == "alphafold":
-        try:
-            url = alphafold_pdb_url(ref["ref"])
-            m = re.search(r"_v(\d+)", url)
-            model_version = m.group(0)[1:] if m else None
-        except Exception:
-            model_version = None
+        model_version = _cached_model_version(cache_dir, obj_id, ref, relax_cfg)
+        if model_version is None:
+            try:
+                url = alphafold_pdb_url(ref["ref"])
+                m = re.search(r"_v(\d+)", url)
+                model_version = m.group(0)[1:] if m else None
+            except Exception:
+                model_version = None
 
     phash = relax_params_hash(ref, relax_cfg, model_version=model_version)
     target = relaxed_path(cache_dir, obj_id, phash)
     if target.exists():
         return target
 
-    src = fetch(StructureRef(**ref), Path(cache_dir) / "structures", slug=obj_id)
+    src = fetch(StructureRef(kind=ref["kind"], ref=ref["ref"]), Path(cache_dir) / "structures", slug=obj_id)
 
     if relax_in_water is None:
         raise RuntimeError(
@@ -127,4 +148,13 @@ def get_or_relax(ref: Dict[str, Any], cache_dir: str | Path, relax_cfg: Dict[str
         return target
     except RelaxError as exc:
         log.warning("relax_in_water failed for %s (%s); using raw fetched structure", obj_id, exc)
+        if src.suffix.lower() in (".pdb", ".cif"):
+            raw_prov = src.with_suffix(".provenance.json")
+            raw_prov.write_text(json.dumps({
+                "source": ref["kind"],
+                "id": ref["ref"],
+                "model_version": model_version,
+                "relaxed": False,
+                "utc": datetime.now(timezone.utc).isoformat(),
+            }, indent=2))
         return src

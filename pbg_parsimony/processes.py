@@ -6,12 +6,15 @@ the cell geometry, the chromosome), and emits a packed 3D cell.
 """
 from __future__ import annotations
 import copy
+import logging
 
 from process_bigraph import Step
 
 from pbg_parsimony.api import Ingredient, Capsule, Chromosome, build_pack
 from pbg_parsimony.structures import StructureRef
 from pbg_parsimony.relax_cache import get_or_relax
+
+log = logging.getLogger(__name__)
 
 
 def _ref(d) -> StructureRef:
@@ -84,7 +87,7 @@ class ParsimonyPackStep(Step):
 
 
 RELAX_PARAM_KEYS = ("forcefield", "water_model", "padding_nm", "ionic_strength_M",
-                    "temperature_K", "timestep_fs", "equil_ps", "seed")
+                    "temperature_K", "timestep_fs", "equil_ps", "minimize", "seed")
 
 _RELAXABLE_KINDS = {"alphafold", "pdb", "cif"}
 
@@ -93,7 +96,13 @@ def relax_spec(spec: dict, *, relax: bool, cache_dir, relax_cfg: dict) -> dict:
     """Return a copy of ``spec`` with each ingredient's structure rewritten to
     its cached RELAXED file (opt-in). ``relax=False`` returns the spec
     unchanged (deep-copied; the original is never mutated). Only
-    alphafold/pdb/cif structures are relaxed; ``file`` refs pass through."""
+    alphafold/pdb/cif structures are relaxed; ``file`` refs pass through.
+
+    Any failure relaxing a single ingredient (network/fetch error, missing
+    OpenMM, unparseable structure, etc.) is logged and that ingredient's
+    original structure ref is left in place — matching the non-relax path's
+    behavior of skipping a bad ingredient rather than aborting the whole
+    pack (see ``build_pack``)."""
     out = copy.deepcopy(spec)
     if not relax:
         return out
@@ -101,8 +110,11 @@ def relax_spec(spec: dict, *, relax: bool, cache_dir, relax_cfg: dict) -> dict:
         structure = ing.get("structure")
         if not structure or structure.get("kind") not in _RELAXABLE_KINDS:
             continue
-        p = get_or_relax(structure, cache_dir, relax_cfg, obj_id=ing["id"])
-        ing["structure"] = {"kind": "file", "ref": str(p)}
+        try:
+            p = get_or_relax(structure, cache_dir, relax_cfg, obj_id=ing["id"])
+            ing["structure"] = {"kind": "file", "ref": str(p)}
+        except Exception as exc:  # fetch fail / openmm missing / bad ref → build on raw
+            log.warning("relax skipped for %s (%s); using unrelaxed structure", ing["id"], exc)
     return out
 
 
@@ -121,6 +133,7 @@ class StructureRelaxStep(Step):
         "temperature_K": {"_type": "float", "_default": 300.0},
         "timestep_fs": {"_type": "float", "_default": 2.0},
         "equil_ps": {"_type": "float", "_default": 200.0},
+        "minimize": {"_type": "boolean", "_default": True},
         "seed": {"_type": "integer", "_default": 0},
     }
 

@@ -45,6 +45,7 @@ produces a distinct relaxed structure rather than silently reusing a stale one.
 | `temperature_K`      | `300.0`                                        | equilibration temperature                  |
 | `timestep_fs`        | `2.0`                                          | integrator timestep (fs)                   |
 | `equil_ps`           | `200.0`                                        | equilibration length (ps)                  |
+| `minimize`           | `True`                                         | run an energy minimization before equilibration |
 | `seed`               | `0`                                            | RNG seed (velocities/ion placement)        |
 
 ## Cache layout
@@ -71,18 +72,22 @@ network or OpenMM.
 
 ## Failure handling
 
-If relaxation raises (`pbg_openmm.relax.RelaxError`) — e.g. a structure OpenMM
-can't parameterize — `get_or_relax` logs a warning and falls back to the raw
-fetched structure (unrelaxed), rather than failing the whole pack. This keeps
-`relax=True` safe to leave on for a heterogeneous ingredient list where a rare
-structure might not relax cleanly.
+Relaxation is best-effort **per ingredient**: any failure — a
+`pbg_openmm.relax.RelaxError` (e.g. a structure OpenMM can't parameterize), a
+missing/failed structure fetch (network down, bad id), or OpenMM not being
+installed at all — is logged and that single ingredient falls back to its
+raw (unrelaxed) fetched structure rather than aborting the whole pack. This
+mirrors the non-relax path's existing "skip a bad ingredient" behavior in
+`build_pack`, so `relax=True` is safe to leave on for a heterogeneous
+ingredient list where a rare structure might not fetch or relax cleanly.
 
 ## Requirements
 
 - [OpenMM](https://openmm.org/) installed (`pbg-openmm`'s `relax_in_water`
-  wraps it). If OpenMM isn't importable, `relax_spec`/`StructureRelaxStep`
-  raise on the first attempted relax (import of `pbg_parsimony` itself still
-  succeeds either way — relaxation is opt-in at the module level too).
+  wraps it). If OpenMM isn't importable, that's just another per-ingredient
+  failure mode: the ingredient falls back to its raw structure (per
+  "Failure handling" above) and the pack still builds; import of
+  `pbg_parsimony` itself always succeeds either way.
 - AMBER14 / TIP3P force field files (bundled with OpenMM's data files;
   no extra download).
 - Network access to fetch the raw structure on a cache miss (RCSB/AlphaFold).
