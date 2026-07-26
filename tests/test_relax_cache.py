@@ -37,6 +37,10 @@ def test_get_or_relax_cache_hit_skips_relax(tmp_path, monkeypatch):
     p2 = rc.get_or_relax(ref, tmp_path / "cache", CFG, obj_id="x")   # hit → no re-relax
     assert p1 == p2 and calls["n"] == 1
     assert (p1.with_suffix(".provenance.json")).is_file()
+    # This mock never writes `target` itself, so the fallback-copy branch
+    # fires; provenance must not misrepresent the cached file as relaxed.
+    prov = json.loads(p1.with_suffix(".provenance.json").read_text())
+    assert prov["relaxed"] is False
 
 
 def test_relax_error_falls_back_to_raw(tmp_path, monkeypatch):

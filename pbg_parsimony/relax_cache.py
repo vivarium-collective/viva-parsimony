@@ -101,16 +101,26 @@ def get_or_relax(ref: Dict[str, Any], cache_dir: str | Path, relax_cfg: Dict[str
     try:
         target.parent.mkdir(parents=True, exist_ok=True)
         prov = relax_in_water(str(src), str(target), **relax_cfg)
+        relaxed = True
         if not target.exists():
             # Defensive fallback: relax_in_water is contracted to write
-            # pdb_out itself, but if a caller's stand-in doesn't, make sure
-            # the cache slot is still populated so the hit-check above works.
+            # pdb_out itself (or raise RelaxError). If that contract is ever
+            # broken (future bug / alternate backend) and it returns without
+            # writing target, we must not silently cache the raw structure
+            # under a relaxed name with provenance claiming it was relaxed.
+            log.warning(
+                "relax_in_water for %s returned without writing the relaxed "
+                "output to %s; caching the raw fetched structure instead "
+                "(marked relaxed=False in provenance)", obj_id, target,
+            )
             shutil.copyfile(src, target)
+            relaxed = False
         provenance = {
             "source": ref["kind"],
             "id": ref["ref"],
             "model_version": model_version,
             **prov,
+            "relaxed": relaxed,
             "utc": datetime.now(timezone.utc).isoformat(),
         }
         target.with_suffix(".provenance.json").write_text(json.dumps(provenance, indent=2))
