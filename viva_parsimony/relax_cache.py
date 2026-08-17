@@ -3,7 +3,7 @@
 Wraps :func:`pbg_openmm.relax.relax_in_water` so the 3D packing pipeline can
 opt into water-relaxed structures without repeating an expensive OpenMM run
 every time the same (structure, relax-params) pair is requested. Relaxation
-is opt-in: this module (and `pbg_parsimony` as a whole) must still import
+is opt-in: this module (and `viva_parsimony` as a whole) must still import
 cleanly when OpenMM/``pbg_openmm`` is not installed.
 
 Cache key: a SHA1 over the canonical JSON of the structure reference, the

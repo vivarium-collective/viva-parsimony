@@ -1,8 +1,8 @@
 """High-level API: turn an ingredient list + cell geometry into a 3D pack.
 
-This is the reusable core of pbg-parsimony. Organism-specific logic (which
+This is the reusable core of viva-parsimony. Organism-specific logic (which
 molecules, their names/categories/abundances) lives in the caller (e.g.
-v2ecoli); pbg-parsimony resolves structures, authors the recipe, and runs the
+v2ecoli); viva-parsimony resolves structures, authors the recipe, and runs the
 parsimony engine.
 """
 from __future__ import annotations
@@ -11,9 +11,9 @@ import shutil
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from pbg_parsimony.structures import StructureRef, fetch
-from pbg_parsimony.engine import mesh_file, run_pipeline
-from pbg_parsimony.recipe import object_block, author_recipe, build_pipeline
+from viva_parsimony.structures import StructureRef, fetch
+from viva_parsimony.engine import mesh_file, run_pipeline
+from viva_parsimony.recipe import object_block, author_recipe, build_pipeline
 
 
 @dataclass

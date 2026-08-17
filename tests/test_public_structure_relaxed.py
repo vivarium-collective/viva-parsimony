@@ -1,8 +1,8 @@
 import json
 from dataclasses import dataclass
 
-from pbg_parsimony.api import _public_structure, _publish_relaxed_pdb
-from pbg_parsimony.structures import StructureRef
+from viva_parsimony.api import _public_structure, _publish_relaxed_pdb
+from viva_parsimony.structures import StructureRef
 
 
 def test_relaxed_file_ref_reports_provenance(tmp_path):

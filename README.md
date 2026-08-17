@@ -1,4 +1,4 @@
-# pbg-parsimony
+# viva-parsimony
 
 Reusable [process-bigraph](https://github.com/vivarium-collective/process-bigraph)
 packing of **3D whole-cell structural models**. It wraps the
@@ -10,7 +10,7 @@ viewer) can render.
 It is **organism-agnostic**: the caller supplies *which* molecules, their
 abundances, names and categories, and the structure source for each. A
 whole-cell model such as [v2ecoli](https://github.com/vivarium-collective/v2ecoli)
-provides those; pbg-parsimony does the structure resolution, recipe authoring,
+provides those; viva-parsimony does the structure resolution, recipe authoring,
 and packing.
 
 ## See it live
@@ -22,8 +22,8 @@ Hundreds of molecular species packed at true abundance from a
 RNA polymerase, metabolic enzymes, the supercoiled chromosome, flagella. Switch
 between a **newborn cell** and a **pre-division cell** (two segregated,
 daughter-centered chromosomes), toggle/isolate species by functional category,
-and **"View in VR"** on a Meta Quest. This whole scene is built by pbg-parsimony
-and rendered in the bundled viewer (`pbg_parsimony/viewer/`).
+and **"View in VR"** on a Meta Quest. This whole scene is built by viva-parsimony
+and rendered in the bundled viewer (`viva_parsimony/viewer/`).
 
 ## What it does
 
@@ -48,20 +48,20 @@ Pack a small example cell (real PDB structures + a lipid membrane in a capsule)
 and explore it in the bundled 3D viewer:
 
 ```bash
-PARSIMONY_HOME=/path/to/parsimony python -m pbg_parsimony.demo
-# or, after `pip install`:  pbg-parsimony-demo
+PARSIMONY_HOME=/path/to/parsimony python -m viva_parsimony.demo
+# or, after `pip install`:  viva-parsimony-demo
 ```
 
 It builds the pack, assembles a self-contained viewer app, and opens it in your
 browser. The ingredient panel groups molecules by category, is searchable, and
 lets you toggle/isolate each species. The same composite is catalogued at
-`pbg_parsimony/composites/parsimony-demo.composite.yaml` for the
+`viva_parsimony/composites/parsimony-demo.composite.yaml` for the
 vivarium-dashboard.
 
 ## Use
 
 ```python
-from pbg_parsimony import build_pack, Ingredient, Capsule, Chromosome, StructureRef
+from viva_parsimony import build_pack, Ingredient, Capsule, Chromosome, StructureRef
 
 ingredients = [
     Ingredient("ribosome", count=6000, region="interior",

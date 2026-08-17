@@ -3,7 +3,7 @@
 Ingredient structures are fetched as-is from RCSB (PDB/mmCIF) or AlphaFold DB —
 crystallographic/predicted coordinates, no solvent, no minimization. For
 callers that want an all-atom, explicit-water-relaxed structure instead
-(closer to a physically settled conformation), pbg-parsimony can run each
+(closer to a physically settled conformation), viva-parsimony can run each
 structure through a short OpenMM equilibration before packing.
 
 **This is opt-in and defaults OFF.** Nothing changes for existing callers
@@ -13,19 +13,19 @@ unless they explicitly set `relax=True`.
 
 Two equivalent entry points:
 
-- **Function**: `pbg_parsimony.processes.relax_spec(spec, *, relax=True, cache_dir, relax_cfg)`
+- **Function**: `viva_parsimony.processes.relax_spec(spec, *, relax=True, cache_dir, relax_cfg)`
   returns a deep copy of `spec` with each `alphafold`/`pdb`/`cif` ingredient's
   `structure` rewritten to `{"kind": "file", "ref": <cached relaxed pdb path>}`.
   Existing `file` refs pass through unchanged. Feed the result to
   `spec_to_ingredients` / `spec_capsule` / `build_pack` as usual.
 
-- **Step**: `pbg_parsimony.processes.StructureRelaxStep` — a `process_bigraph`
+- **Step**: `viva_parsimony.processes.StructureRelaxStep` — a `process_bigraph`
   `Step` (`spec` in, `spec` out) for composites, wrapping `relax_spec` with
   its `config_schema` as the params below. Registered via
   `register_parsimony(core)` as `"StructureRelaxStep"`.
 
 ```python
-from pbg_parsimony import processes as P
+from viva_parsimony import processes as P
 
 relaxed = P.relax_spec(spec, relax=True, cache_dir="out/cache",
                         relax_cfg={"equil_ps": 5.0, "padding_nm": 1.0, "seed": 0})
@@ -62,7 +62,7 @@ force field, padding, seed, etc. never collides with an existing cache entry:
 
 The provenance sidecar records the source kind/id, model version, the relax
 params used, whether relaxation actually succeeded (`relaxed: true/false`),
-and a UTC timestamp. `pbg_parsimony.api._public_structure` reads this sidecar
+and a UTC timestamp. `viva_parsimony.api._public_structure` reads this sidecar
 so the packed sidecar/viewer info box still shows a public structure record
 for a relaxed ingredient (`{"db": "relaxed", "id": ..., "provenance": {...}}`)
 even though its `structure.kind` is now `"file"`.
@@ -87,7 +87,7 @@ ingredient list where a rare structure might not fetch or relax cleanly.
   wraps it). If OpenMM isn't importable, that's just another per-ingredient
   failure mode: the ingredient falls back to its raw structure (per
   "Failure handling" above) and the pack still builds; import of
-  `pbg_parsimony` itself always succeeds either way.
+  `viva_parsimony` itself always succeeds either way.
 - AMBER14 / TIP3P force field files (bundled with OpenMM's data files;
   no extra download).
 - Network access to fetch the raw structure on a cache miss (RCSB/AlphaFold).
@@ -106,7 +106,7 @@ relaxation as a per-structure, cached, one-time cost rather than a per-run one.
 
 ## Testing
 
-- `pbg_parsimony.relax_cache` unit tests (`tests/test_relax_cache.py`) and the
+- `viva_parsimony.relax_cache` unit tests (`tests/test_relax_cache.py`) and the
   `relax_spec`/`StructureRelaxStep` unit tests (`tests/test_structure_relax_step.py`)
   run in the fast suite (`-m "not slow"`), with OpenMM/network mocked out.
 - `tests/test_relax_integration.py` is a real, slow, network+OpenMM+CLI

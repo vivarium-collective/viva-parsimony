@@ -1,7 +1,7 @@
 """Test that nascent-RNA specs are serialized into the recipe chromosome block."""
 import json
 from pathlib import Path
-from pbg_parsimony import Chromosome, Capsule, Ingredient, build_pack
+from viva_parsimony import Chromosome, Capsule, Ingredient, build_pack
 
 
 def test_rnas_serialized_into_recipe(tmp_path):

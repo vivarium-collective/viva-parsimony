@@ -22,8 +22,8 @@ def test_two_ingredient_relaxed_pack(tmp_path):
     if not os.environ.get("PARSIMONY_HOME"):
         pytest.skip("PARSIMONY_HOME not set (parsimony CLI needed to mesh/pack)")
 
-    from pbg_parsimony import processes as P
-    from pbg_parsimony.api import build_pack
+    from viva_parsimony import processes as P
+    from viva_parsimony.api import build_pack
 
     spec = {
         "ingredients": [

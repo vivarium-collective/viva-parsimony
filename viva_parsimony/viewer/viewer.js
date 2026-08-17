@@ -2717,7 +2717,7 @@ const ABOUT_HTML = window.PARSIMONY_ABOUT || `
 const ABOUT_CREDIT = `
   <p class="credit">A <a href="https://vivariumlab.com" target="_blank" rel="noopener">Vivarium Lab</a>
   project · built with <a href="https://github.com/vivarium-collective/v2ecoli" target="_blank" rel="noopener">v2ecoli</a>
-  · packing by <a href="https://github.com/vivarium-collective/pbg-parsimony" target="_blank" rel="noopener">pbg-parsimony</a></p>`;
+  · packing by <a href="https://github.com/vivarium-collective/viva-parsimony" target="_blank" rel="noopener">viva-parsimony</a></p>`;
 // "By the numbers": live totals + per-category breakdown of the loaded pack.
 function aboutStatsHtml() {
   if (!instancedMeshes.length) return "";

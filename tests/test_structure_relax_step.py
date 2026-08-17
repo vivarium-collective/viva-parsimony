@@ -1,4 +1,4 @@
-from pbg_parsimony import processes as P
+from viva_parsimony import processes as P
 
 SPEC = {"ingredients": [
     {"id": "gapdh", "structure": {"kind": "alphafold", "ref": "P0A9B2"}},
