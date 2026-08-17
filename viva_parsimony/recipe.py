@@ -57,7 +57,7 @@ def author_recipe(name, objects, interior, surface, capsule, chromosome=None,
                       if i.get("mesh_path") else _capsule(float(i["half_len"]), float(i["radius"])))
         recipe = {
             "name": name, "version": "0.1.0", "format_version": "2.1-parsimony",
-            "description": "Gram-negative envelope packed by pbg-parsimony.",
+            "description": "Gram-negative envelope packed by viva-parsimony.",
             "bounding_box": [[-(oh + orad), -orad * bbox_pad, -orad * bbox_pad],
                              [oh + orad, orad * bbox_pad, orad * bbox_pad]],
             "objects": objects,
@@ -79,7 +79,7 @@ def author_recipe(name, objects, interior, surface, capsule, chromosome=None,
     comp = cell_compartment or _capsule(half, r)
     recipe = {
         "name": name, "version": "0.1.0", "format_version": "2.1-parsimony",
-        "description": "Packed by pbg-parsimony.",
+        "description": "Packed by viva-parsimony.",
         "bounding_box": [[-(half + r), -r * bbox_pad, -r * bbox_pad],
                          [half + r, r * bbox_pad, r * bbox_pad]],
         "objects": objects,

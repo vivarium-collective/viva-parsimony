@@ -2,7 +2,7 @@
 
 Organism-agnostic. Callers pass a ``StructureRef`` describing where a structure
 comes from; :func:`fetch` downloads (and caches) it to a local file that
-:func:`pbg_parsimony.engine.mesh_file` can mesh.
+:func:`viva_parsimony.engine.mesh_file` can mesh.
 """
 from __future__ import annotations
 import json

@@ -1,9 +1,9 @@
-"""Interactive demo for pbg-parsimony.
+"""Interactive demo for viva-parsimony.
 
 Packs a small example cell (a handful of real PDB structures + a lipid membrane
 in a capsule) and serves it in the interactive 3D viewer.
 
-    PARSIMONY_HOME=/path/to/parsimony python -m pbg_parsimony.demo
+    PARSIMONY_HOME=/path/to/parsimony python -m viva_parsimony.demo
 
 Needs the parsimony binary (see README) and network access for a few PDB
 downloads. Output (pack + meshes + viewer) is written under ``--out``.
@@ -18,7 +18,7 @@ import socketserver
 import webbrowser
 from pathlib import Path
 
-from pbg_parsimony import Ingredient, Capsule, StructureRef, build_pack
+from viva_parsimony import Ingredient, Capsule, StructureRef, build_pack
 
 VIEWER = Path(__file__).parent / "viewer"
 
@@ -70,7 +70,7 @@ def build_demo(out_dir: str | Path = "out/parsimony-demo", scale: float = 1.0) -
 
 
 def main():
-    ap = argparse.ArgumentParser(description="Build + serve the pbg-parsimony 3D demo.")
+    ap = argparse.ArgumentParser(description="Build + serve the viva-parsimony 3D demo.")
     ap.add_argument("--out", default="out/parsimony-demo")
     ap.add_argument("--port", type=int, default=8000)
     ap.add_argument("--scale", type=float, default=1.0)

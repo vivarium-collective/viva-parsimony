@@ -10,9 +10,9 @@ import logging
 
 from process_bigraph import Step
 
-from pbg_parsimony.api import Ingredient, Capsule, Chromosome, build_pack
-from pbg_parsimony.structures import StructureRef
-from pbg_parsimony.relax_cache import get_or_relax
+from viva_parsimony.api import Ingredient, Capsule, Chromosome, build_pack
+from viva_parsimony.structures import StructureRef
+from viva_parsimony.relax_cache import get_or_relax
 
 log = logging.getLogger(__name__)
 

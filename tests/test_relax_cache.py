@@ -2,7 +2,7 @@
 import json
 from pathlib import Path
 
-from pbg_parsimony import relax_cache as rc
+from viva_parsimony import relax_cache as rc
 
 CFG = {"forcefield": ["amber14-all.xml", "amber14/tip3pfb.xml"], "water_model": "tip3p",
        "padding_nm": 1.0, "ionic_strength_M": 0.15, "temperature_K": 300.0,

@@ -3,7 +3,7 @@ requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "pbg-parsimony"
+name = "viva-parsimony"
 version = "0.1.0"
 description = "Reusable process-bigraph packing of 3D whole-cell structural models (parsimony engine wrapper)"
 readme = "README.md"
@@ -16,14 +16,19 @@ dependencies = [
 [project.optional-dependencies]
 dev = ["pytest>=7"]
 
+[project.urls]
+Homepage = "https://github.com/vivarium-collective/viva-parsimony"
+Issues = "https://github.com/vivarium-collective/viva-parsimony/issues"
+
 [tool.setuptools]
-packages = ["pbg_parsimony", "pbg_parsimony.composites"]
+packages = ["viva_parsimony", "viva_parsimony.composites", "pbg_parsimony"]  # viva_parsimony real; pbg_parsimony = back-compat import shim
 
 [tool.setuptools.package-data]
-pbg_parsimony = ["viewer/*", "composites/*.yaml"]
+viva_parsimony = ["viewer/*", "composites/*.yaml"]
 
 [project.scripts]
-pbg-parsimony-demo = "pbg_parsimony.demo:main"
+viva-parsimony-demo = "viva_parsimony.demo:main"
+pbg-parsimony-demo = "viva_parsimony.demo:main"
 
 [tool.uv.sources]
 process-bigraph = { git = "https://github.com/vivarium-collective/process-bigraph.git", branch = "main" }

@@ -1,8 +1,8 @@
 """Pure tests for recipe/pipeline authoring + geometry (no network/binary)."""
 import math
 
-from pbg_parsimony.recipe import object_block, author_recipe, build_pipeline, LOD_VOXELS
-from pbg_parsimony.api import Capsule
+from viva_parsimony.recipe import object_block, author_recipe, build_pipeline, LOD_VOXELS
+from viva_parsimony.api import Capsule
 
 
 def test_object_block_lods_and_proxy():

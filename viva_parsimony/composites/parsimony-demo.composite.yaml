@@ -1,5 +1,5 @@
 name: parsimony-demo
-description: "Pack a small example cell (a few real PDB structures + a lipid membrane in a capsule) into a 3D molecular scene with the parsimony engine. The result is a *.pack.json explorable in the bundled interactive viewer (see `python -m pbg_parsimony.demo`)."
+description: "Pack a small example cell (a few real PDB structures + a lipid membrane in a capsule) into a 3D molecular scene with the parsimony engine. The result is a *.pack.json explorable in the bundled interactive viewer (see `python -m viva_parsimony.demo`)."
 tags: [structural-biology, cellpack, mesoscale, packing, demo, 3d]
 
 requires:
