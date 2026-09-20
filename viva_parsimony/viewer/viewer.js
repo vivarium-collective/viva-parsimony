@@ -1417,6 +1417,12 @@ function addInstancedType(ing, color, enclosingRadius, pts) {
     visible: true,
     fallbackSphere,
     lods,
+    // The chromosome fiber (tens of thousands of dsDNA-segment beads) is a
+    // continuous STRUCTURE, not molecular crowding — it gets its own
+    // performance subsample (fiberFraction) and its category toggle, and is NOT
+    // thinned by the "show %" crowding slider (which would gap the fiber and be
+    // dominated by the sheer bead count).
+    isFiber: ing.id === "dna_segment" || ing.name === "dna_segment",
   });
 }
 
@@ -1556,6 +1562,12 @@ let lodSphereBudgetPx = 6.0;
 // it down to declutter / cut render load without re-packing (the packed
 // cell is numerically sparse but the oversized proxies read as crowded).
 let interiorFraction = 1.0;
+// The DNA nucleoid fiber has its OWN subsample fraction, independent of the
+// "show %" crowding slider: it is a structure (toggle it whole via its category
+// checkbox), and mixing its ~50k beads into the crowding budget forced the whole
+// cell to a tiny % and made the slider look broken. Perf-capped on load.
+let fiberFraction = 1.0;
+const FIBER_DRAW_TARGET = 12000;
 
 // Target number of drawn instances for the default view — a GPU-friendly load
 // that still reads as a crowded cell. Whole-cell packs (~1M+) are subsampled
@@ -1624,9 +1636,19 @@ function applyAdaptiveShowFraction(totalPlacements) {
   _packTotalPlacements = totalPlacements;
   const vr = renderer.xr.isPresenting;
   const target = vr ? VR_TARGET_DRAWN : FLAT_TARGET_DRAWN;
-  let pct = (target / totalPlacements) * 100;
-  pct = vr ? Math.min(100, Math.max(1, Math.round(pct)))
-           : Math.min(100, Math.max(1, Math.round(pct)));
+  // Split the draw budget: the DNA fiber gets its own perf cap; the crowding
+  // slider's default is set by the MOLECULAR (non-fiber) placement count, so a
+  // dense nucleoid no longer forces the whole cell to a tiny % (which made the
+  // slider look broken).
+  let fiber = 0, molecular = 0;
+  for (const e of instancedMeshes) {
+    if (e.isFiber) fiber += e.placements.length;
+    else molecular += e.placements.length;
+  }
+  if (!molecular) molecular = totalPlacements;   // fallback (no fiber tag)
+  fiberFraction = fiber > FIBER_DRAW_TARGET ? FIBER_DRAW_TARGET / fiber : 1.0;
+  let pct = (target / molecular) * 100;
+  pct = Math.min(100, Math.max(1, Math.round(pct)));
   interiorFraction = pct / 100;
   const slider = document.getElementById("show-fraction");
   const val = document.getElementById("show-fraction-value");
@@ -1790,9 +1812,12 @@ function reassessLODs() {
       }
     }
 
+    // The DNA fiber follows its own perf fraction; everything else follows the
+    // "show %" crowding slider.
+    const frac = entry.isFiber ? fiberFraction : interiorFraction;
     const nShow = entry.placements.length <= ALWAYS_SHOW_MAX
       ? entry.placements.length
-      : Math.round(entry.placements.length * interiorFraction);
+      : Math.round(entry.placements.length * frac);
     for (let pi = 0; pi < nShow; pi++) {
       const p = entry.placements[pi];
       const px = p.position[0], py = p.position[1], pz = p.position[2];
