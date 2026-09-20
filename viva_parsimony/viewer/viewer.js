@@ -2760,8 +2760,12 @@ function aboutRenderNote() {
     + `in random order, this preserves relative abundances and spatial layout. Drag the “show %” slider `
     + `up for the full crowded density.</p>`;
 }
+// Per-pack about/credit HTML from the loaded meta sidecar (set in loadModel);
+// null → use the generic ABOUT_HTML/ABOUT_CREDIT defaults below.
+let packAbout = null, packCredit = null;
 function renderAbout() {
-  if (aboutBody) aboutBody.innerHTML = ABOUT_HTML + aboutStatsHtml() + aboutRenderNote() + ABOUT_CREDIT;
+  if (aboutBody) aboutBody.innerHTML = (packAbout || ABOUT_HTML) + aboutStatsHtml()
+    + aboutRenderNote() + (packCredit || ABOUT_CREDIT);
 }
 function setAbout(show) {
   if (!aboutPanel) return;
@@ -3347,6 +3351,10 @@ async function loadModel(file) {
         console.error(`meta sidecar URL returned a pack, not metadata (${metaFile}) — keeping display names + categories from the previous load; check the .pack.json→.meta.json URL rewrite`);
       } else {
         ingredientMeta = j.ingredients || j || {};
+        // Optional per-pack "about" text (organism-specific) from the sidecar,
+        // overriding the generic E. coli default. Falls back when absent.
+        packAbout = (typeof j.about_html === "string" && j.about_html) ? j.about_html : null;
+        packCredit = (typeof j.credit_html === "string" && j.credit_html) ? j.credit_html : null;
       }
     }
   } catch (e) {
