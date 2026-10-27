@@ -28,19 +28,33 @@ and rendered in the bundled viewer (`viva_parsimony/viewer/`).
 ## What it does
 
 1. **Resolve structures** — RCSB PDB / mmCIF (large assemblies) or AlphaFold DB
-   (by UniProt accession), cached locally.
+   (by UniProt accession), cached locally. (Also accepts a local `file`.)
 2. **Mesh** each to Van-der-Waals surface LODs (via `parsimony mesh`).
 3. **Author** a `2.1-parsimony` recipe (capsule cell, interior/surface regions,
    supercoiled rod nucleoid) + a staged octree pipeline + an ingredient
    metadata sidecar (display names + categories).
 4. **Pack** with the parsimony octree engine → a `*.pack.json`.
 
-## Requirements
+## Install
 
-The `parsimony` binary must be reachable. Set one of:
+```bash
+uv venv
+uv pip install -e ".[dev]"
+```
+
+Requires Python >= 3.10. `process-bigraph` and `bigraph-schema` are pulled from
+their `main` branches (see `[tool.uv.sources]` in `pyproject.toml`); use `uv` so
+those sources are honored.
+
+### Runtime requirement: the parsimony binary
+
+Packing shells out to the `parsimony` binary, which must be reachable. Set one of:
+
 - `PARSIMONY_BIN` — path to the binary, or
 - `PARSIMONY_HOME` — the parsimony repo (built: `cargo build --release`), or
 - have `parsimony` on `PATH`.
+
+(Structure relaxation additionally needs OpenMM; see `StructureRelaxStep` below.)
 
 ## Interactive demo
 
@@ -49,7 +63,7 @@ and explore it in the bundled 3D viewer:
 
 ```bash
 PARSIMONY_HOME=/path/to/parsimony python -m viva_parsimony.demo
-# or, after `pip install`:  viva-parsimony-demo
+# or, after install:  viva-parsimony-demo
 ```
 
 It builds the pack, assembles a self-contained viewer app, and opens it in your
@@ -58,7 +72,7 @@ lets you toggle/isolate each species. The same composite is catalogued at
 `viva_parsimony/composites/parsimony-demo.composite.yaml` for the
 vivarium-dashboard.
 
-## Use
+## Python API
 
 ```python
 from viva_parsimony import build_pack, Ingredient, Capsule, Chromosome, StructureRef
@@ -72,7 +86,8 @@ ingredients = [
                structure=StructureRef("alphafold", "P0A910"),
                display_name="outer membrane protein A", category="Envelope",
                color=(0.8, 0.55, 0.85)),
-    # …
+    # lipids can use a cheap sphere proxy instead of a meshed structure:
+    Ingredient("lipid", count=6000, region="surface", sphere_radius=12.0),
 ]
 result = build_pack(
     ingredients,
@@ -84,8 +99,54 @@ result = build_pack(
 print(result["n_placed"], result["pack_path"])
 ```
 
-In a process-bigraph composite, use `ParsimonyPackStep` (counts come in as the
-`counts` input; the structural spec is config). `register_parsimony(core)`
-makes `local:ParsimonyPackStep` resolve.
+`build_pack` returns `{pack_path, sidecar_path, recipe_path, pipeline_path,
+n_placed, ingredients}`. Structures cache under `<out_dir>/structures` and meshes
+under `<out_dir>/meshes`.
+
+Passing `envelope={"inner": Capsule(...), "outer": Capsule(...)}` builds a
+gram-negative two-membrane envelope; ingredients are then routed into nested
+compartments by `Ingredient.compartment` (`cytoplasm` | `periplasm` |
+`inner_membrane` | `outer_membrane`).
+
+## In a process-bigraph composite
+
+```python
+from viva_parsimony import register_parsimony
+register_parsimony(core)   # makes local:ParsimonyPackStep / local:StructureRelaxStep resolve
+```
+
+- **`ParsimonyPackStep`** — packs a cell from live molecular `counts` (input) +
+  a structural `spec` (config), emitting the pack result on its `pack` output.
+- **`StructureRelaxStep`** — opt-in upstream Step that rewrites each ingredient's
+  fetched structure to a cached water-relaxed structure (OpenMM) before packing;
+  `relax=False` (default) passes structures through unchanged.
+
+## API overview
+
+Exported from the top-level `viva_parsimony` package:
+
+- **`build_pack`** — high-level entry point: resolve + mesh structures, author
+  the recipe, and pack the cell.
+- **`Ingredient`** — one molecular species to place (structure or sphere proxy,
+  region/compartment, count, display metadata).
+- **`Capsule`** — spherocylinder cell geometry; `Capsule.from_volume_fl(...)`
+  sizes it to a cell volume.
+- **`Chromosome`** — a supercoiled rod nucleoid (replication state, forks, nascent
+  RNA/ribosome/peptide placements, septum constriction).
+- **`StructureRef`** — a structure source: `pdb` / `cif` (RCSB id), `alphafold`
+  (UniProt accession), or `file` (local path).
+- **`find_parsimony_bin`** / **`ParsimonyNotFound`** — locate the parsimony
+  binary (raises if unreachable).
+- **`ParsimonyPackStep`** / **`StructureRelaxStep`** / **`register_parsimony`** —
+  the process-bigraph Steps and their registration helper.
+
+A back-compatibility shim distribution (`pbg-parsimony`, under `shim/`)
+re-exports `viva_parsimony` for the package's former name.
+
+## Links
+
+- Repository: https://github.com/vivarium-collective/viva-parsimony
+- parsimony engine: https://github.com/prismofeverything/parsimony
+- process-bigraph: https://github.com/vivarium-collective/process-bigraph
 
 *A project of the [Vivarium Collective](https://github.com/vivarium-collective).*
