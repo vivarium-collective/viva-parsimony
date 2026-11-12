@@ -1,0 +1,29 @@
+name: Run Pytest
+
+on:
+  pull_request:
+    branches:
+      - main
+  push:
+    branches:
+      - main
+  workflow_call:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up uv and Python
+        uses: astral-sh/setup-uv@v5
+        with:
+          python-version: '3.12'
+          enable-cache: true
+
+      # The engine-dependent test modules (test_relax_cache / test_ribosomes /
+      # test_rnaps / test_rnas) need the external parsimony Rust binary, which
+      # isn't present here; tests/conftest.py skips them when it's absent. Every
+      # other test still runs, so this meaningfully gates releases.
+      - name: Run pytest
+        run: uv run --extra dev pytest

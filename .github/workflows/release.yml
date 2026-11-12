@@ -1,0 +1,24 @@
+name: release
+on:
+  push:
+    tags: ["v*"]
+permissions:
+  id-token: write   # for PyPI trusted publishing
+jobs:
+  # Never publish an untested build — gate the release on the pytest workflow.
+  test:
+    uses: ./.github/workflows/pytest.yml
+
+  publish:
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.11"}
+      - name: Install uv
+        run: pip install uv
+      - name: Build
+        run: uv build
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
