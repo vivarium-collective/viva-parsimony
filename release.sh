@@ -1,0 +1,54 @@
+#!/usr/bin/env bash
+# Bump version, commit, tag, and push. CI publishes to PyPI via OIDC
+# trusted publisher (.github/workflows/release.yml).
+#
+# Usage:
+#   ./release.sh           # bumps patch
+#   ./release.sh minor     # bumps minor
+#   ./release.sh major     # bumps major
+#
+# First release only: configure a PyPI "pending publisher" for this project at
+# https://pypi.org/manage/account/publishing/ (repo vivarium-collective/viva-parsimony,
+# workflow release.yml, no environment) before tagging, so the OIDC publish is
+# authorized.
+
+set -e
+
+bump_kind="${1:-patch}"
+
+# Working tree must be clean.
+if [ -n "$(git status --untracked-files=no --porcelain)" ]; then
+    echo "You have uncommitted changes. Aborting."
+    exit 1
+fi
+
+# Must be on main, up to date with origin.
+branch="$(git rev-parse --abbrev-ref HEAD)"
+if [ "$branch" != "main" ]; then
+    echo "You are on $branch but releases must be cut from main."
+    exit 1
+fi
+git fetch origin main
+if [ "$(git rev-parse HEAD)" != "$(git rev-parse origin/main)" ]; then
+    echo "main is not in sync with origin/main. Pull or push first."
+    exit 1
+fi
+
+# Bump version.
+uv version --bump "$bump_kind"
+version=$(uv version --short)
+
+# Commit pyproject.
+git add pyproject.toml
+git commit -m "version $version"
+
+# Push the commit first so CI runs against main HEAD.
+git push origin main
+
+# Tag the commit and push the tag — this triggers release.yml,
+# which re-runs tests and then publishes to PyPI via OIDC.
+git tag -m "version v$version" "v$version"
+git push origin "v$version"
+
+echo "Tagged v$version. Watch the release workflow:"
+echo "  gh run watch"
