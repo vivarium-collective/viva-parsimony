@@ -30,10 +30,6 @@ viva_parsimony = ["viewer/*", "composites/*.yaml"]
 viva-parsimony-demo = "viva_parsimony.demo:main"
 pbg-parsimony-demo = "viva_parsimony.demo:main"
 
-[tool.uv.sources]
-process-bigraph = { git = "https://github.com/vivarium-collective/process-bigraph.git", branch = "main" }
-bigraph-schema = { git = "https://github.com/vivarium-collective/bigraph-schema.git", branch = "main" }
-
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 markers = [
