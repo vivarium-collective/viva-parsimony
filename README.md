@@ -1,5 +1,8 @@
 # viva-parsimony
 
+[![license](https://img.shields.io/badge/license-Apache%202.0-blue)](LICENSE)
+[![python](https://img.shields.io/badge/python-3.10%2B-blue)](https://www.python.org/)
+
 Reusable [process-bigraph](https://github.com/vivarium-collective/process-bigraph)
 packing of **3D whole-cell structural models**. It wraps the
 [parsimony](https://github.com/prismofeverything/parsimony) engine (a
@@ -148,5 +151,9 @@ re-exports `viva_parsimony` for the package's former name.
 - Repository: https://github.com/vivarium-collective/viva-parsimony
 - parsimony engine: https://github.com/prismofeverything/parsimony
 - process-bigraph: https://github.com/vivarium-collective/process-bigraph
+
+## License
+
+Apache License 2.0 — see [LICENSE](LICENSE).
 
 *A project of the [Vivarium Collective](https://github.com/vivarium-collective).*
